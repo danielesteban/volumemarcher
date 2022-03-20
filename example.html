@@ -1,0 +1,161 @@
+<!doctype html>
+<html>
+  <head>
+    <title>volumemarcher</title>
+    <meta charset="utf-8">
+    <style>
+      body {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="renderer"></div>
+    <div id="profiler"></div>
+    <script async src="https://cdn.jsdelivr.net/npm/es-module-shims@1.4.6/dist/es-module-shims.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "fast-noise": "https://cdn.jsdelivr.net/npm/fastnoise-lite@0.0.1/FastNoiseLite.js",
+          "three": "https://cdn.jsdelivr.net/npm/three@0.138.0/build/three.module.js",
+          "three-gui": "https://cdn.jsdelivr.net/npm/three@0.138.0/examples/jsm/libs/lil-gui.module.min.js",
+          "three-orbit": "https://cdn.jsdelivr.net/npm/three@0.138.0/examples/jsm/controls/OrbitControls.js",
+          "three-rgbe": "https://cdn.jsdelivr.net/npm/three@0.138.0/examples/jsm/loaders/RGBELoader.js",
+          "three-stats": "https://cdn.jsdelivr.net/npm/three@0.138.0/examples/jsm/libs/stats.module.js",
+          "volumemarcher": "./module.js"
+        }
+      }
+    </script>
+    <script type="module">
+      import FastNoise from 'fast-noise';
+      import {
+        Color,
+        Data3DTexture,
+        EquirectangularReflectionMapping,
+        LinearFilter,
+        PerspectiveCamera,
+        PMREMGenerator,
+        Scene,
+        sRGBEncoding,
+        Vector3,
+        WebGLRenderer,
+      } from 'three';
+      import { GUI } from 'three-gui';
+      import { OrbitControls } from 'three-orbit';
+      import { RGBELoader } from 'three-rgbe';
+      import Stats from 'three-stats';
+      import VolumeMarcher from 'volumemarcher';
+
+      const stats = new Stats();
+      document.body.appendChild(stats.dom);
+      const renderer = new WebGLRenderer();
+      renderer.outputEncoding = sRGBEncoding;
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      const camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+      const controls = new OrbitControls(camera, renderer.domElement);
+      document.getElementById('renderer').appendChild(renderer.domElement);
+      window.addEventListener('resize', () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+      }, false);
+
+      const scene = new Scene();
+      camera.position.set(0, 0, 8);
+      controls.enableDamping = true;
+
+      const size = 128;
+      const volume = new Data3DTexture(new Uint8Array((size * 4) ** 3), size, size, size);
+      volume.minFilter = LinearFilter;
+      volume.magFilter = LinearFilter;
+      volume.unpackAlignment = 1;
+
+      const fbm = new FastNoise();
+      fbm.SetNoiseType(FastNoise.NoiseType.OpenSimplex2);
+      fbm.SetFractalType(FastNoise.FractalType.FBm);
+      fbm.SetFractalOctaves(4);
+      fbm.SetFrequency(0.04);
+      const perlin = new FastNoise();
+      perlin.SetNoiseType(FastNoise.NoiseType.Perlin);
+      perlin.SetFrequency(0.02);
+      const generate = (seed) => {
+        fbm.SetSeed(seed);
+        perlin.SetSeed(seed);
+        const { data, width, height, depth } = volume.image;
+        const center = new Vector3(width * 0.5, height * 0.5, depth * 0.5);
+        const p = new Vector3();
+        const r = p.distanceTo(center);
+        const color = new Color();
+        for (let i = 0, z = 0; z < depth; z++) {
+          for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++, i += 4) {
+              let d = (p.set(x, y, z).distanceTo(center) / r) - 0.5;
+              color.setHSL(
+                perlin.GetNoise(x - center.x, y - center.y, z - center.z),
+                0.5 - d,
+                0.5 + d
+              ).convertSRGBToLinear();
+              d += (fbm.GetNoise(x - center.x, y - center.y, z - center.z) + 0.5) * 0.25;
+              data.set([
+                color.r * 255,
+                color.g * 255,
+                color.b * 255,
+                Math.min(Math.max(128 - d * 128, 0), 255),
+              ], i);
+            }
+          }
+        }
+        volume.needsUpdate = true;
+      };
+      const seed = 5000;
+      generate(seed);
+
+      const volumemarcher = new VolumeMarcher({
+        displacementFrequency: 256,
+        displacementScale: 0.006,
+        volume,
+      });
+      volumemarcher.scale.setScalar(10);
+      volumemarcher.visible = false;
+      scene.add(volumemarcher);
+
+      const environments = {
+        Apartment: 'https://cdn.glitch.global/76fe1fa3-d3aa-4d7b-911f-8ad91e01d136/lebombo_2k.hdr?v=1646042358302',
+        City: 'https://cdn.glitch.global/76fe1fa3-d3aa-4d7b-911f-8ad91e01d136/potsdamer_platz_2k.hdr?v=1646042358575',
+        Forest: 'https://cdn.glitch.global/76fe1fa3-d3aa-4d7b-911f-8ad91e01d136/neurathen_rock_castle_2k.hdr?v=1646042624812',
+        Studio: 'https://cdn.glitch.global/76fe1fa3-d3aa-4d7b-911f-8ad91e01d136/studio_small_08_2k.hdr?v=1646042358774',
+        Warehouse: 'https://cdn.glitch.global/76fe1fa3-d3aa-4d7b-911f-8ad91e01d136/empty_warehouse_01_2k.hdr?v=1646042357806',
+        Sunset: 'https://cdn.glitch.global/76fe1fa3-d3aa-4d7b-911f-8ad91e01d136/venice_sunset_2k.hdr?v=1646042356028',
+        Dawn: 'https://cdn.glitch.global/76fe1fa3-d3aa-4d7b-911f-8ad91e01d136/kiara_1_dawn_2k.hdr?v=1646042357931',
+        Night: 'https://cdn.glitch.global/76fe1fa3-d3aa-4d7b-911f-8ad91e01d136/dikhololo_night_2k.hdr?v=1646042357152',
+      };
+      const loader = new RGBELoader();
+      const pmrem = new PMREMGenerator(renderer);
+      const loadEnvironment = (environment) => {
+        loader.load(environments[environment], (texture) => {
+          texture.mapping = EquirectangularReflectionMapping;
+          scene.background = texture;
+          volumemarcher.userData.envMap = pmrem.fromEquirectangular(texture).texture;
+          volumemarcher.visible = true;
+        });
+      };
+      loadEnvironment('Warehouse');
+
+      const gui = new GUI({ title: 'volumemarcher' });
+      gui.add(volumemarcher.userData, 'displacementFrequency', 0, 2048, 1);
+      gui.add(volumemarcher.userData, 'displacementScale', 0, 0.05, 0.001);
+      gui.add({ envMap: 'Warehouse' }, 'envMap', Object.keys(environments)).onChange(loadEnvironment);
+      gui.add(volumemarcher.userData, 'envMapIntensity', 0, 1, 0.01);
+      gui.add(volumemarcher.userData, 'metalness', 0, 1, 0.01);
+      gui.add(volumemarcher.userData, 'roughness', 0, 1, 0.01);
+      gui.add({ seed }, 'seed', 0, 10000, 1).onChange(generate);
+      gui.add(volumemarcher.userData, 'threshold', 0.3, 0.7, 0.01);
+
+      renderer.setAnimationLoop(() => {
+        controls.update();
+        stats.update();
+        renderer.render(scene, camera);
+      });
+    </script>
+  </body>
+</html>

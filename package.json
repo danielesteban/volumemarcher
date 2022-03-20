@@ -1,0 +1,31 @@
+{
+  "name": "volumemarcher",
+  "author": "Daniel Esteban Nombela",
+  "version": "0.0.1",
+  "license": "MIT",
+  "module": "module.js",
+  "files": [
+    "LICENSE",
+    "module.js",
+    "package.json",
+    "README.md"
+  ],
+  "devDependencies": {
+    "npm-run-all": "^4.1.5",
+    "rollup": "^2.70.1",
+    "sirv-cli": "^2.0.2"
+  },
+  "peerDependencies": {
+    "three": "^0.138.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danielesteban/three-raymarcher"
+  },
+  "scripts": {
+    "build": "rollup -c rollup.config.js",
+    "watch": "npm run build -- -w",
+    "serve": "sirv --dev --port 8080 --quiet .",
+    "start": "run-p watch serve"
+  }
+}
