@@ -73,7 +73,7 @@ void main() {
     float distance = getDistance(p + 0.5);
     if (distance >= threshold) {
       color.rgb = getLight(
-        mat3(modelMatrix) * p,
+        (modelMatrix * vec4(p, 1.0)).xyz,
         normalize(mat3(transpose(inverse(modelMatrix))) * getNormal(p + 0.5)),
         getColor(p + 0.5)
       );
